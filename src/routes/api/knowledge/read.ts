@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { json } from '@tanstack/react-start'
 import { isAuthenticated } from '../../../server/auth-middleware'
 import { readKnowledgePage } from '../../../server/knowledge-browser'
+import { readKnowledgeBaseConfig } from '../../../server/knowledge-config'
 
 export const Route = createFileRoute('/api/knowledge/read')({
   server: {
@@ -13,9 +14,11 @@ export const Route = createFileRoute('/api/knowledge/read')({
 
         const url = new URL(request.url)
         const pathParam = url.searchParams.get('path') || ''
+        const config = readKnowledgeBaseConfig()
+        const baseId = url.searchParams.get('baseId') || config.activeBaseId
 
         try {
-          const { meta, content, backlinks } = readKnowledgePage(pathParam)
+          const { meta, content, backlinks } = readKnowledgePage(pathParam, baseId)
           return json({ page: meta, content, backlinks })
         } catch (error) {
           const message =
