@@ -136,6 +136,7 @@ import { Route as ApiMcpDiscoverRouteImport } from './routes/api/mcp/discover'
 import { Route as ApiMcpConfigureRouteImport } from './routes/api/mcp/configure'
 import { Route as ApiMcpNameRouteImport } from './routes/api/mcp/$name'
 import { Route as ApiKnowledgeSyncRouteImport } from './routes/api/knowledge/sync'
+import { Route as ApiKnowledgeSwarmStatusRouteImport } from './routes/api/knowledge/swarm-status'
 import { Route as ApiKnowledgeSearchRouteImport } from './routes/api/knowledge/search'
 import { Route as ApiKnowledgeReadRouteImport } from './routes/api/knowledge/read'
 import { Route as ApiKnowledgeListRouteImport } from './routes/api/knowledge/list'
@@ -789,6 +790,11 @@ const ApiKnowledgeSyncRoute = ApiKnowledgeSyncRouteImport.update({
   path: '/api/knowledge/sync',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiKnowledgeSwarmStatusRoute = ApiKnowledgeSwarmStatusRouteImport.update({
+  id: '/api/knowledge/swarm-status',
+  path: '/api/knowledge/swarm-status',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiKnowledgeSearchRoute = ApiKnowledgeSearchRouteImport.update({
   id: '/api/knowledge/search',
   path: '/api/knowledge/search',
@@ -982,6 +988,7 @@ export interface FileRoutesByFullPath {
   '/api/knowledge/list': typeof ApiKnowledgeListRoute
   '/api/knowledge/read': typeof ApiKnowledgeReadRoute
   '/api/knowledge/search': typeof ApiKnowledgeSearchRoute
+  '/api/knowledge/swarm-status': typeof ApiKnowledgeSwarmStatusRoute
   '/api/knowledge/sync': typeof ApiKnowledgeSyncRoute
   '/api/mcp/$name': typeof ApiMcpNameRouteWithChildren
   '/api/mcp/configure': typeof ApiMcpConfigureRoute
@@ -1126,6 +1133,7 @@ export interface FileRoutesByTo {
   '/api/knowledge/list': typeof ApiKnowledgeListRoute
   '/api/knowledge/read': typeof ApiKnowledgeReadRoute
   '/api/knowledge/search': typeof ApiKnowledgeSearchRoute
+  '/api/knowledge/swarm-status': typeof ApiKnowledgeSwarmStatusRoute
   '/api/knowledge/sync': typeof ApiKnowledgeSyncRoute
   '/api/mcp/$name': typeof ApiMcpNameRouteWithChildren
   '/api/mcp/configure': typeof ApiMcpConfigureRoute
@@ -1272,6 +1280,7 @@ export interface FileRoutesById {
   '/api/knowledge/list': typeof ApiKnowledgeListRoute
   '/api/knowledge/read': typeof ApiKnowledgeReadRoute
   '/api/knowledge/search': typeof ApiKnowledgeSearchRoute
+  '/api/knowledge/swarm-status': typeof ApiKnowledgeSwarmStatusRoute
   '/api/knowledge/sync': typeof ApiKnowledgeSyncRoute
   '/api/mcp/$name': typeof ApiMcpNameRouteWithChildren
   '/api/mcp/configure': typeof ApiMcpConfigureRoute
@@ -1419,6 +1428,7 @@ export interface FileRouteTypes {
     | '/api/knowledge/list'
     | '/api/knowledge/read'
     | '/api/knowledge/search'
+    | '/api/knowledge/swarm-status'
     | '/api/knowledge/sync'
     | '/api/mcp/$name'
     | '/api/mcp/configure'
@@ -1563,6 +1573,7 @@ export interface FileRouteTypes {
     | '/api/knowledge/list'
     | '/api/knowledge/read'
     | '/api/knowledge/search'
+    | '/api/knowledge/swarm-status'
     | '/api/knowledge/sync'
     | '/api/mcp/$name'
     | '/api/mcp/configure'
@@ -1708,6 +1719,7 @@ export interface FileRouteTypes {
     | '/api/knowledge/list'
     | '/api/knowledge/read'
     | '/api/knowledge/search'
+    | '/api/knowledge/swarm-status'
     | '/api/knowledge/sync'
     | '/api/mcp/$name'
     | '/api/mcp/configure'
@@ -1848,6 +1860,7 @@ export interface RootRouteChildren {
   ApiKnowledgeListRoute: typeof ApiKnowledgeListRoute
   ApiKnowledgeReadRoute: typeof ApiKnowledgeReadRoute
   ApiKnowledgeSearchRoute: typeof ApiKnowledgeSearchRoute
+  ApiKnowledgeSwarmStatusRoute: typeof ApiKnowledgeSwarmStatusRoute
   ApiKnowledgeSyncRoute: typeof ApiKnowledgeSyncRoute
   ApiModelInfoRoute: typeof ApiModelInfoRoute
   ApiOauthDeviceCodeRoute: typeof ApiOauthDeviceCodeRoute
@@ -2755,6 +2768,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiKnowledgeSyncRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/knowledge/swarm-status': {
+      id: '/api/knowledge/swarm-status'
+      path: '/api/knowledge/swarm-status'
+      fullPath: '/api/knowledge/swarm-status'
+      preLoaderRoute: typeof ApiKnowledgeSwarmStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/knowledge/search': {
       id: '/api/knowledge/search'
       path: '/api/knowledge/search'
@@ -3158,6 +3178,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiKnowledgeListRoute: ApiKnowledgeListRoute,
   ApiKnowledgeReadRoute: ApiKnowledgeReadRoute,
   ApiKnowledgeSearchRoute: ApiKnowledgeSearchRoute,
+  ApiKnowledgeSwarmStatusRoute: ApiKnowledgeSwarmStatusRoute,
   ApiKnowledgeSyncRoute: ApiKnowledgeSyncRoute,
   ApiModelInfoRoute: ApiModelInfoRoute,
   ApiOauthDeviceCodeRoute: ApiOauthDeviceCodeRoute,

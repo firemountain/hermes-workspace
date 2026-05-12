@@ -43,11 +43,22 @@ type KnowledgeSource =
   | { type: 'local'; path: string }
   | { type: 'github'; repo: string; branch: string; path: string }
 
+type KnowledgeBaseEntry = {
+  id: string
+  name: string
+  description?: string
+  source: KnowledgeSource
+  swarm?: { root: string; qaCommand?: string }
+}
+
 type KnowledgeListResponse = {
   pages?: Array<WikiPageMeta>
   knowledgeRoot?: string
   exists?: boolean
   source?: KnowledgeSource
+  base?: KnowledgeBaseEntry
+  bases?: Array<KnowledgeBaseEntry>
+  activeBaseId?: string
 }
 
 type KnowledgeReadResponse = {
@@ -82,6 +93,15 @@ type KnowledgeGraphEdge = {
 type KnowledgeGraphResponse = {
   nodes?: Array<KnowledgeGraphNode>
   edges?: Array<KnowledgeGraphEdge>
+}
+
+type KnowledgeSwarmStatusResponse = {
+  available?: boolean
+  reason?: string
+  root?: string
+  ledger?: { total: number; byStatus: Record<string, number> }
+  newestReport?: { path: string; modified: string } | null
+  qa?: string | null
 }
 
 type TreeNode = {
@@ -283,6 +303,7 @@ export function KnowledgeBrowserScreen() {
   const [graphOpen, setGraphOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSource, setSettingsSource] = useState<KnowledgeSource | null>(null)
+  const [selectedBaseId, setSelectedBaseId] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
   const queryClient = useQueryClient()
@@ -291,9 +312,12 @@ export function KnowledgeBrowserScreen() {
     if (!settingsOpen) return
     fetch('/api/knowledge/config')
       .then((r) => r.json())
-      .then((data: { config?: { source: KnowledgeSource } }) => {
+      .then((data: { config?: { source: KnowledgeSource; activeBaseId?: string } }) => {
         if (data.config?.source) {
           setSettingsSource(data.config.source)
+        }
+        if (data.config?.activeBaseId) {
+          setSelectedBaseId(data.config.activeBaseId)
         }
       })
       .catch(() => {})
@@ -303,13 +327,18 @@ export function KnowledgeBrowserScreen() {
   const searchTerm = deferredSearch.trim()
 
   const listQuery = useQuery({
-    queryKey: ['knowledge', 'list'],
-    queryFn: () => readJson<KnowledgeListResponse>('/api/knowledge/list'),
+    queryKey: ['knowledge', 'list', selectedBaseId],
+    queryFn: () =>
+      readJson<KnowledgeListResponse>(
+        `/api/knowledge/list${selectedBaseId ? `?baseId=${encodeURIComponent(selectedBaseId)}` : ''}`,
+      ),
   })
 
   const pages = listQuery.data?.pages ?? []
   const knowledgeRoot = listQuery.data?.knowledgeRoot ?? '~/.hermes/knowledge/'
   const knowledgeExists = listQuery.data?.exists ?? false
+  const knowledgeBases = listQuery.data?.bases ?? []
+  const activeBaseId = selectedBaseId || listQuery.data?.activeBaseId || knowledgeBases[0]?.id
 
   const pageLookup = useMemo(() => {
     const map = new Map<string, string>()
@@ -349,28 +378,47 @@ export function KnowledgeBrowserScreen() {
     setSelectedPath(pages[0]?.path ?? null)
   }, [pages, selectedPath])
 
+  useEffect(() => {
+    if (!listQuery.data?.activeBaseId) return
+    if (selectedBaseId) return
+    setSelectedBaseId(listQuery.data.activeBaseId)
+  }, [listQuery.data?.activeBaseId, selectedBaseId])
+
   const readQuery = useQuery({
-    queryKey: ['knowledge', 'read', selectedPath],
+    queryKey: ['knowledge', 'read', activeBaseId, selectedPath],
     queryFn: () =>
       readJson<KnowledgeReadResponse>(
-        `/api/knowledge/read?path=${encodeURIComponent(selectedPath || '')}`,
+        `/api/knowledge/read?path=${encodeURIComponent(selectedPath || '')}${activeBaseId ? `&baseId=${encodeURIComponent(activeBaseId)}` : ''}`,
       ),
     enabled: Boolean(selectedPath),
   })
 
   const searchQuery = useQuery({
-    queryKey: ['knowledge', 'search', searchTerm],
+    queryKey: ['knowledge', 'search', activeBaseId, searchTerm],
     queryFn: () =>
       readJson<KnowledgeSearchResponse>(
-        `/api/knowledge/search?q=${encodeURIComponent(searchTerm)}`,
+        `/api/knowledge/search?q=${encodeURIComponent(searchTerm)}${activeBaseId ? `&baseId=${encodeURIComponent(activeBaseId)}` : ''}`,
       ),
     enabled: searchTerm.length > 0,
   })
 
   const graphQuery = useQuery({
-    queryKey: ['knowledge', 'graph'],
-    queryFn: () => readJson<KnowledgeGraphResponse>('/api/knowledge/graph'),
+    queryKey: ['knowledge', 'graph', activeBaseId],
+    queryFn: () =>
+      readJson<KnowledgeGraphResponse>(
+        `/api/knowledge/graph${activeBaseId ? `?baseId=${encodeURIComponent(activeBaseId)}` : ''}`,
+      ),
     enabled: graphOpen,
+  })
+
+  const swarmQuery = useQuery({
+    queryKey: ['knowledge', 'swarm-status', activeBaseId],
+    queryFn: () =>
+      readJson<KnowledgeSwarmStatusResponse>(
+        `/api/knowledge/swarm-status${activeBaseId ? `?baseId=${encodeURIComponent(activeBaseId)}` : ''}`,
+      ),
+    enabled: Boolean(activeBaseId && listQuery.data?.base?.swarm),
+    staleTime: 60_000,
   })
 
   const page = readQuery.data?.page ?? null
@@ -665,7 +713,6 @@ export function KnowledgeBrowserScreen() {
                     <button
                       type="button"
                       onClick={async () => {
-                        if (!settingsSource || settingsSource.type !== 'github') return
                         setSyncing(true)
                         setSyncError(null)
                         try {
@@ -731,6 +778,77 @@ export function KnowledgeBrowserScreen() {
           </DialogRoot>
         </div>
       </div>
+
+      {knowledgeBases.length > 0 ? (
+        <section className="grid gap-3 px-3 py-3 sm:grid-cols-2 lg:grid-cols-3">
+          {knowledgeBases.map((base) => {
+            const isActive = activeBaseId === base.id
+            const sourceLabel =
+              base.source.type === 'local'
+                ? base.source.path
+                : `${base.source.repo}/${base.source.path || ''}`
+            return (
+              <button
+                key={base.id}
+                type="button"
+                onClick={async () => {
+                  setSelectedBaseId(base.id)
+                  setSelectedPath(null)
+                  await fetch('/api/knowledge/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ activeBaseId: base.id }),
+                  }).catch(() => {})
+                  queryClient.invalidateQueries({ queryKey: ['knowledge'] })
+                }}
+                className={cn(
+                  'min-h-24 rounded-2xl border p-3 text-left transition-colors',
+                  isActive
+                    ? 'border-accent-500/70 bg-accent-500/10'
+                    : 'border-primary-200 bg-primary-50 hover:border-primary-300 hover:bg-primary-100 dark:border-neutral-800 dark:bg-neutral-950 dark:hover:border-neutral-700',
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-semibold text-primary-900 dark:text-neutral-100">
+                    {base.name}
+                  </div>
+                  {base.swarm ? <InlineBadge label="swarm" /> : null}
+                </div>
+                {base.description ? (
+                  <p className="mt-1 line-clamp-2 text-xs text-primary-500 dark:text-neutral-400">
+                    {base.description}
+                  </p>
+                ) : null}
+                <div className="mt-2 truncate text-[11px] text-primary-400 dark:text-neutral-500">
+                  {sourceLabel}
+                </div>
+              </button>
+            )
+          })}
+        </section>
+      ) : null}
+
+      {swarmQuery.data?.available ? (
+        <section className="mx-3 mb-3 rounded-2xl border border-primary-200 bg-primary-50/70 p-3 text-sm dark:border-neutral-800 dark:bg-neutral-950">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="font-semibold text-primary-900 dark:text-neutral-100">HD Wiki Swarm Status</div>
+              <div className="text-xs text-primary-500 dark:text-neutral-400">{swarmQuery.data.root}</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <InlineBadge label={`${swarmQuery.data.ledger?.total ?? 0} packages`} />
+              {Object.entries(swarmQuery.data.ledger?.byStatus ?? {}).map(([status, count]) => (
+                <InlineBadge key={status} label={`${status}: ${count}`} />
+              ))}
+            </div>
+          </div>
+          {swarmQuery.data.qa ? (
+            <pre className="mt-3 max-h-40 overflow-auto rounded-xl bg-white/60 p-3 text-xs text-primary-700 dark:bg-neutral-900 dark:text-neutral-300">
+              {swarmQuery.data.qa}
+            </pre>
+          ) : null}
+        </section>
+      ) : null}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 md:grid-cols-[320px_minmax(0,1fr)] md:p-4">
         <aside className="flex min-h-0 flex-col rounded-2xl border border-primary-200 bg-primary-50 dark:border-neutral-800 dark:bg-neutral-950">

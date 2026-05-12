@@ -5,7 +5,11 @@ import {
   knowledgeRootExists,
   listKnowledgePages,
 } from '../../../server/knowledge-browser'
-import { readKnowledgeBaseConfig } from '../../../server/knowledge-config'
+import {
+  getKnowledgeBaseById,
+  getKnowledgeBaseEffectiveRoot,
+  readKnowledgeBaseConfig,
+} from '../../../server/knowledge-config'
 
 export const Route = createFileRoute('/api/knowledge/list')({
   server: {
@@ -16,13 +20,20 @@ export const Route = createFileRoute('/api/knowledge/list')({
         }
 
         try {
+          const url = new URL(request.url)
           const config = readKnowledgeBaseConfig()
-          const source = config.source
-          const exists = knowledgeRootExists()
+          const baseId = url.searchParams.get('baseId') || config.activeBaseId
+          const base = getKnowledgeBaseById(baseId)
+          const source = base?.source ?? config.source
+          const exists = knowledgeRootExists(base?.id)
           return json({
-            pages: exists ? listKnowledgePages() : [],
+            pages: exists ? listKnowledgePages(base?.id) : [],
             exists,
             source,
+            base,
+            bases: config.bases ?? [],
+            activeBaseId: base?.id ?? config.activeBaseId,
+            knowledgeRoot: getKnowledgeBaseEffectiveRoot(source),
           })
         } catch (error) {
           return json(
