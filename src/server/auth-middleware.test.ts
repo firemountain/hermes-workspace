@@ -11,6 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 beforeEach(() => {
   vi.resetModules()
+  delete process.env.COOKIE_SECURE
+  delete process.env.NODE_ENV
+  delete process.env.TRUST_PROXY
+  delete process.env.CLAUDE_PASSWORD
 })
 
 afterEach(() => {
@@ -25,18 +29,18 @@ describe('createSessionCookie (#123)', () => {
     process.env.NODE_ENV = 'development'
     const { createSessionCookie } = await import('./auth-middleware')
     const cookie = createSessionCookie('tok123')
-    expect(cookie).toMatch(/^claude-auth=tok123/)
+    expect(cookie).toMatch(/^hermes-workspace-auth=tok123/)
     expect(cookie).toContain('HttpOnly')
     expect(cookie).toContain('SameSite=Strict')
     expect(cookie).toContain('Path=/')
-    expect(cookie).not.toContain('Secure')
+    expect(cookie).not.toMatch(/(?:^|; )Secure(?:;|$)/)
   })
 
   it('sets Secure in production by default', async () => {
     process.env.NODE_ENV = 'production'
     const { createSessionCookie } = await import('./auth-middleware')
     const cookie = createSessionCookie('tok123')
-    expect(cookie).toContain('Secure')
+    expect(cookie).toMatch(/(?:^|; )Secure(?:;|$)/)
     expect(cookie).toContain('HttpOnly')
     expect(cookie).toContain('SameSite=Strict')
   })
@@ -46,7 +50,7 @@ describe('createSessionCookie (#123)', () => {
     process.env.COOKIE_SECURE = '1'
     const { createSessionCookie } = await import('./auth-middleware')
     const cookie = createSessionCookie('tok123')
-    expect(cookie).toContain('Secure')
+    expect(cookie).toMatch(/(?:^|; )Secure(?:;|$)/)
   })
 
   it('respects COOKIE_SECURE=0 override in production', async () => {
@@ -54,7 +58,23 @@ describe('createSessionCookie (#123)', () => {
     process.env.COOKIE_SECURE = '0'
     const { createSessionCookie } = await import('./auth-middleware')
     const cookie = createSessionCookie('tok123')
-    expect(cookie).not.toContain('Secure')
+    expect(cookie).not.toMatch(/(?:^|; )Secure(?:;|$)/)
+  })
+})
+
+describe('session cookie parsing', () => {
+  it('accepts the current Hermes workspace cookie name', async () => {
+    const { getSessionTokenFromCookie } = await import('./auth-middleware')
+    expect(
+      getSessionTokenFromCookie('theme=dark; hermes-workspace-auth=tok123'),
+    ).toBe('tok123')
+  })
+
+  it('keeps accepting the legacy Claude cookie during migration', async () => {
+    const { getSessionTokenFromCookie } = await import('./auth-middleware')
+    expect(getSessionTokenFromCookie('theme=dark; claude-auth=oldtok')).toBe(
+      'oldtok',
+    )
   })
 })
 
