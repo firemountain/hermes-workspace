@@ -45,6 +45,11 @@ function dispatchOnboardingCompletionChanged(completed: boolean) {
 type Step = 'welcome' | 'connect' | 'provider' | 'test' | 'done'
 
 type GatewayStatusResponse = {
+  ok?: boolean
+  status?: 'connected' | 'enhanced' | 'partial' | 'disconnected'
+  chatReady?: boolean
+  modelConfigured?: boolean
+  activeModel?: string
   capabilities?: {
     health?: boolean
     chatCompletions?: boolean
@@ -176,6 +181,27 @@ export function ClaudeOnboarding() {
   const canFetchModels = Boolean(capabilities?.models)
   const backendSupportsChat = Boolean(capabilities?.chatCompletions)
 
+  const applyReadyBackend = useCallback((data: GatewayStatusResponse) => {
+    setBackendInfo(data)
+    if (data.activeModel) {
+      const normalizedModel = stripProviderPrefix(data.activeModel)
+      setConfiguredModel(normalizedModel)
+      setSelectedModel((current) => current || normalizedModel)
+    }
+    setBackendStatus('ready')
+    setBackendMessage(
+      data.capabilities?.sessions || data.status === 'enhanced'
+        ? 'Backend connected. Core chat works, and Hermes Agent gateway enhancements are available.'
+        : 'Backend connected. Core chat is ready.',
+    )
+    try {
+      localStorage.setItem(ONBOARDING_KEY, 'true')
+      dispatchOnboardingCompletionChanged(true)
+    } catch {
+      // iOS standalone storage can throw in rare partitioned/private modes.
+    }
+  }, [])
+
   const loadCurrentConfig = useCallback(async () => {
     try {
       const res = await fetch('/api/claude-config')
@@ -228,21 +254,41 @@ export function ClaudeOnboarding() {
     setBackendMessage('')
 
     try {
-      const res = await fetch('/api/gateway-status')
+      const connectionRes = await fetch('/api/connection-status', {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      })
+      if (connectionRes.ok) {
+        const connectionData =
+          (await connectionRes.json()) as GatewayStatusResponse
+        if (
+          connectionData.ok ||
+          connectionData.status === 'connected' ||
+          connectionData.status === 'enhanced' ||
+          (connectionData.chatReady && connectionData.modelConfigured)
+        ) {
+          applyReadyBackend(connectionData)
+          return
+        }
+      }
+
+      const res = await fetch('/api/gateway-status', {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      })
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`)
+        throw new Error(
+          connectionRes.status === 401 || res.status === 401
+            ? 'Please log in again, then retry backend setup.'
+            : `HTTP ${res.status}`,
+        )
       }
 
       const data = (await res.json()) as GatewayStatusResponse
       setBackendInfo(data)
 
       if (data.capabilities?.chatCompletions) {
-        setBackendStatus('ready')
-        setBackendMessage(
-          data.capabilities.sessions
-            ? 'Backend connected. Core chat works, and Hermes Agent gateway enhancements are available.'
-            : 'Backend connected. Core chat is ready.',
-        )
+        applyReadyBackend(data)
         return
       }
 
@@ -263,7 +309,7 @@ export function ClaudeOnboarding() {
         err instanceof Error ? err.message : 'Connection check failed',
       )
     }
-  }, [])
+  }, [applyReadyBackend])
 
   const saveProviderConfig = useCallback(async () => {
     if (!selectedProvider) return true
