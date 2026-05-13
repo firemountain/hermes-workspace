@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { cacheClaudeAuthStatus } from '@/lib/claude-auth'
 
 export function LoginScreen() {
   const [password, setPassword] = useState('')
@@ -14,6 +15,7 @@ export function LoginScreen() {
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       })
@@ -21,7 +23,8 @@ export function LoginScreen() {
       const data = await res.json()
 
       if (data.ok) {
-        // Success! Reload to trigger auth check
+        cacheClaudeAuthStatus({ authenticated: true, authRequired: true })
+        // Success! Reload so every API client starts with the freshly-set cookie.
         window.location.reload()
       } else {
         setError(data.error || 'Invalid password')
