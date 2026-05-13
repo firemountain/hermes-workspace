@@ -216,6 +216,59 @@ export function getRootLayoutMode(
   return onboardingComplete === 'true' ? 'workspace' : 'onboarding'
 }
 
+export type BackendReadyStatus = {
+  ok?: boolean
+  status?: string
+  chatReady?: boolean
+  modelConfigured?: boolean
+  capabilities?: {
+    chatCompletions?: boolean
+  }
+}
+
+export function isBackendReadyForWorkspace(
+  status: BackendReadyStatus | null | undefined,
+): boolean {
+  if (!status) return false
+  return Boolean(
+    status.ok ||
+      status.status === 'connected' ||
+      status.status === 'enhanced' ||
+      (status.chatReady && status.modelConfigured) ||
+      status.capabilities?.chatCompletions,
+  )
+}
+
+export async function syncWorkspaceOnboardingFromBackend({
+  fetcher = fetch,
+  storage = typeof window !== 'undefined' ? window.localStorage : undefined,
+}: {
+  fetcher?: typeof fetch
+  storage?: Pick<Storage, 'setItem'>
+} = {}): Promise<boolean> {
+  if (!storage) return false
+
+  const endpoints = ['/api/connection-status', '/api/gateway-status']
+  for (const endpoint of endpoints) {
+    try {
+      const res = await fetcher(endpoint, {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      })
+      if (!res.ok) continue
+      const status = (await res.json()) as BackendReadyStatus
+      if (isBackendReadyForWorkspace(status)) {
+        storage.setItem(ONBOARDING_KEY, 'true')
+        return true
+      }
+    } catch {
+      // Try the next endpoint. A failed first probe should not strand a fresh
+      // standalone PWA in onboarding when the authenticated backend is healthy.
+    }
+  }
+  return false
+}
+
 export function wrapInlineScript(source: string): string {
   return `(() => {\n  try {\n${source}\n  } catch (error) {\n    console.error('Inline bootstrap script failed', error)\n  }\n})()`
 }
@@ -283,22 +336,9 @@ function RootLayout() {
 
     syncOnboardingCompletion()
 
-    void fetch('/api/connection-status')
-      .then((res) => (res.ok ? res.json() : null))
-      .then(
-        (
-          status: {
-            ok?: boolean
-            chatReady?: boolean
-            modelConfigured?: boolean
-          } | null,
-        ) => {
-          if (status?.ok || (status?.chatReady && status?.modelConfigured)) {
-            localStorage.setItem(ONBOARDING_KEY, 'true')
-            syncOnboardingCompletion()
-          }
-        },
-      )
+    void syncWorkspaceOnboardingFromBackend().then((completed) => {
+      if (completed) syncOnboardingCompletion()
+    })
       .catch(() => undefined)
 
     const handleStorage = (event: StorageEvent) => {
@@ -337,6 +377,11 @@ function RootLayout() {
     fetchClaudeAuthStatus()
       .then((status) => {
         if (!cancelled) setAuthStatus(status)
+        if (status.authenticated) {
+          void syncWorkspaceOnboardingFromBackend().then((completed) => {
+            if (!cancelled && completed) setOnboardingComplete(true)
+          })
+        }
       })
       .catch(() => {
         if (!cancelled) {
